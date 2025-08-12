@@ -1,23 +1,23 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, Lock, Mail, Eye, EyeOff } from 'lucide-react'
+import { Shield, Lock, User, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 const AdminLogin = () => {
   const [credentials, setCredentials] = useState({
-    email: '',
+    username: '',
     password: ''
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   
-  const { loginAdmin, user } = useAuth()
+  const { login, user } = useAuth()
   const navigate = useNavigate()
 
   // Redirect if already logged in as admin
   React.useEffect(() => {
-    if (user && user.user_metadata?.role === 'admin') {
+    if (user && user.role === 'admin') {
       navigate('/admin-dashboard')
     }
   }, [user, navigate])
@@ -37,7 +37,7 @@ const AdminLogin = () => {
     setError('')
 
     try {
-      const result = await loginAdmin(credentials.email, credentials.password)
+      const result = login(credentials.username, credentials.password, 'admin')
       
       if (result.success) {
         navigate('/admin-dashboard')
@@ -81,11 +81,11 @@ const AdminLogin = () => {
               </div>
               
               <div className="demo-credentials">
-                <h4>Admin Account Setup:</h4>
-                <p>
-                  To create an admin account, you need to sign up through Supabase 
-                  and set the user metadata role to 'admin'.
-                </p>
+                <h4>Demo Admin Credentials:</h4>
+                <div className="demo-account">
+                  <strong>Username:</strong> admin<br />
+                  <strong>Password:</strong> admin123
+                </div>
                 <small className="security-note">
                   ⚠️ In production, use strong passwords and enable 2FA
                 </small>
@@ -108,19 +108,19 @@ const AdminLogin = () => {
               )}
 
               <div className="form-group">
-                <label htmlFor="email">
-                  <Mail className="label-icon" />
-                  Email Address
+                <label htmlFor="username">
+                  <User className="label-icon" />
+                  Username
                 </label>
                 <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={credentials.email}
+                  type="text"
+                  id="username"
+                  name="username"
+                  value={credentials.username}
                   onChange={handleInputChange}
-                  placeholder="Enter admin email"
+                  placeholder="Enter admin username"
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                 />
               </div>
 

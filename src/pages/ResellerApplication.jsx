@@ -1,6 +1,5 @@
 import React, { useState } from 'react'
 import { Building, Mail, Phone, FileText, CheckCircle } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 
 const ResellerApplication = () => {
   const [formData, setFormData] = useState({
@@ -23,7 +22,6 @@ const ResellerApplication = () => {
   
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState('')
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -31,43 +29,20 @@ const ResellerApplication = () => {
       ...prev,
       [name]: value
     }))
-    setError('') // Clear error when user types
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsSubmitting(true)
-    setError('')
     
-    try {
-      const { error: insertError } = await supabase
-        .from('reseller_applications')
-        .insert([{
-          company_name: formData.companyName,
-          contact_person: formData.contactPerson,
-          email: formData.email,
-          phone: formData.phone,
-          business_address: formData.businessAddress,
-          city: formData.city,
-          state: formData.state,
-          zip_code: formData.zipCode,
-          business_type: formData.businessType,
-          years_in_business: formData.yearsInBusiness,
-          tax_id: formData.taxId,
-          website: formData.website,
-          expected_monthly_volume: formData.expectedMonthlyVolume,
-          business_description: formData.businessDescription,
-          references: formData.references
-        }])
-
-      if (insertError) throw insertError
-
+    // Simulate API call
+    setTimeout(() => {
       setIsSubmitted(true)
-    } catch (err) {
-      setError(err.message)
-    } finally {
       setIsSubmitting(false)
-    }
+      
+      // In a real application, you would send this data to your backend
+      console.log('Reseller application submitted:', formData)
+    }, 2000)
   }
 
   if (isSubmitted) {
@@ -137,12 +112,6 @@ const ResellerApplication = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="application-form">
-          {error && (
-            <div className="error-message">
-              {error}
-            </div>
-          )}
-
           <div className="form-section">
             <h3>Company Information</h3>
             

@@ -1,95 +1,89 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext()
+
+const MOCK_ADMIN = {
+  username: 'admin',
+  password: 'admin123',
+  role: 'admin'
+}
+
+// Mock B2B users - in real app, this would come from backend
+const MOCK_B2B_USERS = [
+  {
+    id: 1,
+    username: 'reseller1',
+    password: 'pass123',
+    role: 'b2b',
+    companyName: 'ABC Jewelry Store',
+    approved: true
+  },
+  {
+    id: 2,
+    username: 'reseller2',
+    password: 'pass456',
+    role: 'b2b',
+    companyName: 'XYZ Gems',
+    approved: true
+  }
+]
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        setUser(session?.user ?? null)
-        setLoading(false)
-      }
-    )
-
-    return () => subscription.unsubscribe()
+    // Check if user is logged in from localStorage
+    const savedUser = localStorage.getItem('user')
+    if (savedUser) {
+      setUser(JSON.parse(savedUser))
+    }
+    setLoading(false)
   }, [])
 
-  const loginAdmin = async (email, password) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (error) throw error
-
-      // Check if user is admin
-      if (data.user?.user_metadata?.role !== 'admin') {
-        await supabase.auth.signOut()
-        throw new Error('Access denied. Admin privileges required.')
+  const login = (username, password, role = 'b2b') => {
+    if (role === 'admin') {
+      if (username === MOCK_ADMIN.username && password === MOCK_ADMIN.password) {
+        const userData = { ...MOCK_ADMIN }
+        setUser(userData)
+        localStorage.setItem('user', JSON.stringify(userData))
+        return { success: true }
       }
-
-      return { success: true }
-    } catch (error) {
-      return { success: false, message: error.message }
+      return { success: false, message: 'Invalid admin credentials' }
     }
+
+    if (role === 'b2b') {
+      const b2bUser = MOCK_B2B_USERS.find(
+        user => user.username === username && user.password === password && user.approved
+      )
+      if (b2bUser) {
+        const userData = { ...b2bUser }
+        setUser(userData)
+        localStorage.setItem('user', JSON.stringify(userData))
+        return { success: true }
+      }
+      return { success: false, message: 'Invalid B2B credentials or account not approved' }
+    }
+
+    return { success: false, message: 'Invalid role' }
   }
 
-  const loginB2B = async (email, password) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      })
-
-      if (error) throw error
-
-      // Check if user is approved B2B user
-      const { data: b2bUser, error: b2bError } = await supabase
-        .from('b2b_users')
-        .select('*, reseller_applications(company_name)')
-        .eq('user_id', data.user.id)
-        .eq('approved', true)
-        .single()
-
-      if (b2bError || !b2bUser) {
-        await supabase.auth.signOut()
-        throw new Error('B2B account not found or not approved')
-      }
-
-      return { success: true, b2bData: b2bUser }
-    } catch (error) {
-      return { success: false, message: error.message }
-    }
-  }
-
-  const logout = async () => {
-    await supabase.auth.signOut()
+  const logout = () => {
+    setUser(null)
+    localStorage.removeItem('user')
   }
 
   const isAdmin = () => {
-    return user?.user_metadata?.role === 'admin'
+    return user && user.role === 'admin'
   }
 
   const isB2B = () => {
-    return user?.user_metadata?.role === 'b2b'
+    return user && user.role === 'b2b'
   }
 
   const value = {
     user,
-    loginAdmin,
-    loginB2B,
+    login,
     logout,
     isAdmin,
     isB2B,
