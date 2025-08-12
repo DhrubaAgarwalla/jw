@@ -1,90 +1,47 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Minus, ShoppingCart } from 'lucide-react'
+import { Plus, Minus, ShoppingCart, Loader, AlertCircle } from 'lucide-react'
 import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
-
-// Mock product data - in real app, this would come from backend
-const MOCK_PRODUCTS = [
-  {
-    id: 1,
-    name: 'Diamond Solitaire Ring',
-    category: 'Rings',
-    description: 'Elegant 1-carat diamond solitaire ring in 18k white gold',
-    image: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=400',
-    b2cPrice: 2500,
-    b2bPrice: 1800,
-    minQuantityB2B: 2,
-    inStock: true
-  },
-  {
-    id: 2,
-    name: 'Pearl Necklace',
-    category: 'Necklaces',
-    description: 'Classic freshwater pearl necklace with sterling silver clasp',
-    image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400',
-    b2cPrice: 450,
-    b2bPrice: 320,
-    minQuantityB2B: 5,
-    inStock: true
-  },
-  {
-    id: 3,
-    name: 'Gold Hoop Earrings',
-    category: 'Earrings',
-    description: 'Classic 14k gold hoop earrings, perfect for everyday wear',
-    image: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=400',
-    b2cPrice: 180,
-    b2bPrice: 130,
-    minQuantityB2B: 10,
-    inStock: true
-  },
-  {
-    id: 4,
-    name: 'Emerald Tennis Bracelet',
-    category: 'Bracelets',
-    description: 'Stunning emerald tennis bracelet in 18k yellow gold',
-    image: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=400',
-    b2cPrice: 1200,
-    b2bPrice: 850,
-    minQuantityB2B: 3,
-    inStock: true
-  },
-  {
-    id: 5,
-    name: 'Sapphire Pendant',
-    category: 'Necklaces',
-    description: 'Blue sapphire pendant with diamond accents on white gold chain',
-    image: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=400',
-    b2cPrice: 800,
-    b2bPrice: 580,
-    minQuantityB2B: 4,
-    inStock: true
-  },
-  {
-    id: 6,
-    name: 'Wedding Band Set',
-    category: 'Rings',
-    description: 'Matching his and hers wedding bands in platinum',
-    image: 'https://images.unsplash.com/photo-1544376664-80b17f09d399?w=400',
-    b2cPrice: 1500,
-    b2bPrice: 1100,
-    minQuantityB2B: 2,
-    inStock: true
-  }
-]
+import { dbHelpers } from '../lib/supabase'
 
 const Products = () => {
-  const [products, setProducts] = useState(MOCK_PRODUCTS)
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [quantities, setQuantities] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const { addToCart } = useCart()
   const { isB2B } = useAuth()
 
-  const categories = ['All', ...new Set(products.map(product => product.category))]
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      
+      // Load categories and products in parallel
+      const [categoriesData, productsData] = await Promise.all([
+        dbHelpers.getCategories(),
+        dbHelpers.getProducts({ in_stock: true })
+      ])
+      
+      setCategories(['All', ...categoriesData.map(cat => cat.name)])
+      setProducts(productsData)
+    } catch (err) {
+      console.error('Error loading data:', err)
+      setError('Failed to load products. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredProducts = selectedCategory === 'All' 
     ? products 
-    : products.filter(product => product.category === selectedCategory)
+    : products.filter(product => product.categories?.name === selectedCategory)
 
   const handleQuantityChange = (productId, change) => {
     setQuantities(prev => ({
@@ -97,16 +54,52 @@ const Products = () => {
     const quantity = quantities[product.id] || 1
     const isB2BUser = isB2B()
     
-    if (isB2BUser && quantity < product.minQuantityB2B) {
-      alert(`Minimum quantity for B2B customers is ${product.minQuantityB2B}`)
+    if (isB2BUser && quantity < product.min_quantity_b2b) {
+      alert(`Minimum quantity for B2B customers is ${product.min_quantity_b2b}`)
       return
     }
 
-    const price = isB2BUser ? product.b2bPrice : product.b2cPrice
-    addToCart({ ...product, price }, quantity)
+    const price = isB2BUser ? product.b2b_price : product.b2c_price
+    addToCart({ 
+      ...product, 
+      price,
+      category: product.categories?.name || 'Uncategorized',
+      image: product.image_url
+    }, quantity)
     
     // Reset quantity after adding to cart
     setQuantities(prev => ({ ...prev, [product.id]: 1 }))
+  }
+
+  if (loading) {
+    return (
+      <div className="products">
+        <div className="container">
+          <div className="loading-state">
+            <Loader className="spinner" size={48} />
+            <h2>Loading Products...</h2>
+            <p>Please wait while we fetch our jewelry collection.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="products">
+        <div className="container">
+          <div className="error-state">
+            <AlertCircle className="error-icon" size={48} />
+            <h2>Error Loading Products</h2>
+            <p>{error}</p>
+            <button onClick={loadData} className="btn btn-primary">
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -135,70 +128,136 @@ const Products = () => {
         </div>
 
         {/* Products Grid */}
-        <div className="products-grid">
-          {filteredProducts.map(product => {
-            const quantity = quantities[product.id] || 1
-            const isB2BUser = isB2B()
-            const price = isB2BUser ? product.b2bPrice : product.b2cPrice
-            const minQuantity = isB2BUser ? product.minQuantityB2B : 1
+        {filteredProducts.length === 0 ? (
+          <div className="no-products">
+            <h3>No products found</h3>
+            <p>Try selecting a different category or check back later.</p>
+          </div>
+        ) : (
+          <div className="products-grid">
+            {filteredProducts.map(product => {
+                  const quantity = quantities[product.id] || 1
+                  const isB2BUser = isB2B()
+                  const price = isB2BUser ? product.b2b_price : product.b2c_price
+                  const minQuantity = isB2BUser ? product.min_quantity_b2b : 1
+                  const savings = isB2BUser ? ((product.b2c_price - product.b2b_price) / product.b2c_price * 100).toFixed(0) : 0
+                  const totalPrice = price * quantity
 
-            return (
-              <div key={product.id} className="product-card">
-                <div className="product-image">
-                  <img src={product.image} alt={product.name} />
-                  {!product.inStock && <div className="out-of-stock">Out of Stock</div>}
-                </div>
-                
-                <div className="product-info">
-                  <h3 className="product-name">{product.name}</h3>
-                  <p className="product-description">{product.description}</p>
-                  
-                  <div className="product-pricing">
-                    <div className="price">
-                      <span className="current-price">${price}</span>
-                      {isB2BUser && (
-                        <span className="original-price">${product.b2cPrice}</span>
-                      )}
-                    </div>
-                    {isB2BUser && (
-                      <div className="min-quantity">
-                        Min. Qty: {product.minQuantityB2B}
+                  return (
+                    <div key={product.id} className={`product-card ${isB2BUser ? 'b2b-card' : 'b2c-card'}`}>
+                      <div className="product-image">
+                        <img src={product.image_url} alt={product.name} />
+                        {!product.in_stock && <div className="out-of-stock">Out of Stock</div>}
+                        {isB2BUser && savings > 0 && (
+                          <div className="savings-badge">{savings}% OFF</div>
+                        )}
+                        {product.sku && (
+                          <div className="sku-badge">SKU: {product.sku}</div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                      
+                      <div className="product-info">
+                        <div className="product-header">
+                          <h3 className="product-name">{product.name}</h3>
+                          <span className="product-category">{product.categories?.name || 'Uncategorized'}</span>
+                        </div>
+                        
+                        <p className="product-description">{product.description}</p>
+                        
+                        {product.material && (
+                          <div className="product-material">
+                            <strong>Material:</strong> {product.material}
+                          </div>
+                        )}
+                        
+                        <div className="product-pricing">
+                          <div className="price-section">
+                            <div className="main-price">
+                              <span className="current-price">${price.toFixed(2)}</span>
+                              <span className="price-label">{isB2BUser ? 'Wholesale' : 'Retail'}</span>
+                            </div>
+                            
+                            {isB2BUser && (
+                              <div className="price-comparison">
+                                <span className="original-price">
+                                  Retail: ${product.b2c_price.toFixed(2)}
+                                </span>
+                                <span className="savings-text">
+                                  You save ${(product.b2c_price - product.b2b_price).toFixed(2)} per item
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {isB2BUser && (
+                            <div className="b2b-info">
+                              <div className="min-quantity-info">
+                                <span className="min-qty-label">Minimum Order:</span>
+                                <span className="min-qty-value">{product.min_quantity_b2b} pieces</span>
+                              </div>
+                              <div className="bulk-savings">
+                                <span className="bulk-text">
+                                  Total savings on min. order: ${((product.b2c_price - product.b2b_price) * product.min_quantity_b2b).toFixed(2)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
 
-                  <div className="product-actions">
-                    <div className="quantity-selector">
-                      <button 
-                        onClick={() => handleQuantityChange(product.id, -1)}
-                        disabled={quantity <= minQuantity}
-                        className="quantity-btn"
-                      >
-                        <Minus size={16} />
-                      </button>
-                      <span className="quantity">{quantity}</span>
-                      <button 
-                        onClick={() => handleQuantityChange(product.id, 1)}
-                        className="quantity-btn"
-                      >
-                        <Plus size={16} />
-                      </button>
+                        <div className="product-actions">
+                          <div className="quantity-section">
+                            <label className="quantity-label">Quantity:</label>
+                            <div className="quantity-selector">
+                              <button 
+                                onClick={() => handleQuantityChange(product.id, -1)}
+                                disabled={quantity <= minQuantity}
+                                className="quantity-btn"
+                                title="Decrease quantity"
+                              >
+                                <Minus size={16} />
+                              </button>
+                              <span className="quantity">{quantity}</span>
+                              <button 
+                                onClick={() => handleQuantityChange(product.id, 1)}
+                                className="quantity-btn"
+                                title="Increase quantity"
+                              >
+                                <Plus size={16} />
+                              </button>
+                            </div>
+                            {isB2BUser && quantity < product.min_quantity_b2b && (
+                              <span className="quantity-warning">
+                                Minimum {product.min_quantity_b2b} required
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="total-price">
+                            <span className="total-label">Total:</span>
+                            <span className="total-amount">${totalPrice.toFixed(2)}</span>
+                          </div>
+                          
+                          <button 
+                            onClick={() => handleAddToCart(product)}
+                            disabled={!product.in_stock || (isB2BUser && quantity < product.min_quantity_b2b)}
+                            className={`add-to-cart-btn ${isB2BUser ? 'b2b-btn' : 'b2c-btn'}`}
+                          >
+                            <ShoppingCart size={16} />
+                            {isB2BUser ? 'Add to Wholesale Cart' : 'Add to Cart'}
+                          </button>
+                          
+                          {!isB2BUser && (
+                            <div className="b2b-promotion">
+                              <p>Need wholesale pricing? <a href="/reseller-application">Apply for B2B account</a></p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    
-                    <button 
-                      onClick={() => handleAddToCart(product)}
-                      disabled={!product.inStock || (isB2BUser && quantity < product.minQuantityB2B)}
-                      className="add-to-cart-btn"
-                    >
-                      <ShoppingCart size={16} />
-                      Add to Cart
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
+                  )
+                })}
+          </div>
+        )}
       </div>
     </div>
   )

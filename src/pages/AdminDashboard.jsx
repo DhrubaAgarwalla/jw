@@ -3,136 +3,202 @@ import { useNavigate } from 'react-router-dom'
 import { 
   Shield, Plus, Edit, Trash2, Package, Users, 
   TrendingUp, DollarSign, Eye, Check, X, 
-  Search, Filter, Save, Upload
+  Search, Filter, Save, Upload, Loader, AlertCircle
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-
-// Mock data - in real app, this would come from backend
-const INITIAL_PRODUCTS = [
-  {
-    id: 1,
-    name: 'Diamond Solitaire Ring',
-    category: 'Rings',
-    description: 'Elegant 1-carat diamond solitaire ring in 18k white gold',
-    image: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=400',
-    b2cPrice: 2500,
-    b2bPrice: 1800,
-    minQuantityB2B: 2,
-    inStock: true
-  },
-  {
-    id: 2,
-    name: 'Pearl Necklace',
-    category: 'Necklaces',
-    description: 'Classic freshwater pearl necklace with sterling silver clasp',
-    image: 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?w=400',
-    b2cPrice: 450,
-    b2bPrice: 320,
-    minQuantityB2B: 5,
-    inStock: true
-  }
-]
-
-const INITIAL_CATEGORIES = ['Rings', 'Necklaces', 'Earrings', 'Bracelets']
-
-const MOCK_RESELLER_APPLICATIONS = [
-  {
-    id: 1,
-    companyName: 'Golden Gems LLC',
-    contactPerson: 'John Smith',
-    email: 'john@goldengems.com',
-    phone: '+1-555-0123',
-    businessType: 'jewelry-store',
-    yearsInBusiness: '5-10',
-    expectedVolume: '2500-5000',
-    status: 'pending',
-    submittedDate: '2024-01-15'
-  },
-  {
-    id: 2,
-    companyName: 'Sparkle Boutique',
-    contactPerson: 'Sarah Johnson',
-    email: 'sarah@sparkleboutique.com',
-    phone: '+1-555-0456',
-    businessType: 'boutique',
-    yearsInBusiness: '3-5',
-    expectedVolume: '1000-2500',
-    status: 'pending',
-    submittedDate: '2024-01-12'
-  }
-]
+import { dbHelpers, STORAGE_BUCKETS } from '../lib/supabase'
+import ImageUpload from '../components/ImageUpload'
 
 const AdminDashboard = () => {
   const { user, isAdmin } = useAuth()
   const navigate = useNavigate()
   
   const [activeTab, setActiveTab] = useState('overview')
-  const [products, setProducts] = useState(INITIAL_PRODUCTS)
-  const [categories, setCategories] = useState(INITIAL_CATEGORIES)
-  const [resellerApplications, setResellerApplications] = useState(MOCK_RESELLER_APPLICATIONS)
+  const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
+  const [resellerApplications, setResellerApplications] = useState([])
   const [editingProduct, setEditingProduct] = useState(null)
   const [newCategory, setNewCategory] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    totalOrders: 0,
+    totalProducts: 0,
+    pendingApplications: 0
+  })
 
   // Redirect if not admin
   useEffect(() => {
     if (!isAdmin()) {
       navigate('/admin-login')
+    } else {
+      loadData()
     }
   }, [isAdmin, navigate])
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError('')
+      
+      // Load all data in parallel
+      const [productsData, categoriesData, applicationsData] = await Promise.all([
+        dbHelpers.getProducts(),
+        dbHelpers.getCategories(),
+        dbHelpers.getResellerApplications()
+      ])
+      
+      setProducts(productsData)
+      setCategories(categoriesData)
+      setResellerApplications(applicationsData)
+      
+      // Calculate stats
+      const pendingApps = applicationsData.filter(app => app.status === 'pending')
+      setStats({
+        totalRevenue: 45670, // Mock data - would come from orders
+        totalOrders: 156, // Mock data - would come from orders
+        totalProducts: productsData.length,
+        pendingApplications: pendingApps.length
+      })
+    } catch (err) {
+      console.error('Error loading admin data:', err)
+      setError('Failed to load dashboard data. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   if (!user || !isAdmin()) {
     return null
   }
 
-  const handleProductSave = (productData) => {
-    if (editingProduct) {
-      setProducts(prev => prev.map(p => 
-        p.id === editingProduct.id ? { ...productData, id: editingProduct.id } : p
-      ))
-    } else {
-      const newProduct = {
-        ...productData,
-        id: Math.max(...products.map(p => p.id)) + 1
+  const handleProductSave = async (productData) => {
+    try {
+      setLoading(true)
+      
+      if (editingProduct && editingProduct.id) {
+        // Update existing product
+        const updatedProduct = await dbHelpers.updateProduct(editingProduct.id, productData)
+        setProducts(prev => prev.map(p => 
+          p.id === editingProduct.id ? updatedProduct : p
+        ))
+      } else {
+        // Create new product
+        const newProduct = await dbHelpers.createProduct(productData)
+        setProducts(prev => [...prev, newProduct])
       }
-      setProducts(prev => [...prev, newProduct])
+      
+      setEditingProduct(null)
+    } catch (err) {
+      console.error('Error saving product:', err)
+      alert('Failed to save product. Please try again.')
+    } finally {
+      setLoading(false)
     }
-    setEditingProduct(null)
   }
 
-  const handleProductDelete = (productId) => {
+  const handleProductDelete = async (productId) => {
     if (confirm('Are you sure you want to delete this product?')) {
-      setProducts(prev => prev.filter(p => p.id !== productId))
+      try {
+        await dbHelpers.deleteProduct(productId)
+        setProducts(prev => prev.filter(p => p.id !== productId))
+      } catch (err) {
+        console.error('Error deleting product:', err)
+        alert('Failed to delete product. Please try again.')
+      }
     }
   }
 
-  const handleCategoryAdd = () => {
-    if (newCategory.trim() && !categories.includes(newCategory.trim())) {
-      setCategories(prev => [...prev, newCategory.trim()])
-      setNewCategory('')
+  const handleCategoryAdd = async () => {
+    if (newCategory.trim()) {
+      try {
+        const categoryData = {
+          name: newCategory.trim(),
+          description: `${newCategory.trim()} collection`
+        }
+        
+        const newCat = await dbHelpers.createCategory(categoryData)
+        setCategories(prev => [...prev, newCat])
+        setNewCategory('')
+      } catch (err) {
+        console.error('Error adding category:', err)
+        alert('Failed to add category. Please try again.')
+      }
     }
   }
 
-  const handleCategoryDelete = (category) => {
-    if (confirm(`Are you sure you want to delete the "${category}" category?`)) {
-      setCategories(prev => prev.filter(c => c !== category))
+  const handleCategoryDelete = async (categoryId) => {
+    const category = categories.find(c => c.id === categoryId)
+    if (confirm(`Are you sure you want to delete the "${category?.name}" category?`)) {
+      try {
+        await dbHelpers.deleteCategory(categoryId)
+        setCategories(prev => prev.filter(c => c.id !== categoryId))
+      } catch (err) {
+        console.error('Error deleting category:', err)
+        alert('Failed to delete category. Please try again.')
+      }
     }
   }
 
-  const handleApplicationAction = (applicationId, action) => {
-    setResellerApplications(prev => prev.map(app => 
-      app.id === applicationId ? { ...app, status: action } : app
-    ))
+  const handleApplicationAction = async (applicationId, action) => {
+    try {
+      const updatedApp = await dbHelpers.updateApplicationStatus(applicationId, action, user.id)
+      setResellerApplications(prev => prev.map(app => 
+        app.id === applicationId ? updatedApp : app
+      ))
+      
+      // Update stats
+      if (action === 'approved' || action === 'rejected') {
+        setStats(prev => ({
+          ...prev,
+          pendingApplications: prev.pendingApplications - 1
+        }))
+      }
+    } catch (err) {
+      console.error('Error updating application:', err)
+      alert('Failed to update application. Please try again.')
+    }
   }
 
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.category.toLowerCase().includes(searchTerm.toLowerCase())
+    (product.categories?.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const pendingApplications = resellerApplications.filter(app => app.status === 'pending')
-  const totalRevenue = 45670 // Mock data
-  const totalOrders = 156 // Mock data
+
+  if (loading) {
+    return (
+      <div className="admin-dashboard">
+        <div className="container">
+          <div className="loading-state">
+            <Loader className="spinner" size={48} />
+            <h2>Loading Dashboard...</h2>
+            <p>Please wait while we load your admin data.</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="admin-dashboard">
+        <div className="container">
+          <div className="error-state">
+            <AlertCircle className="error-icon" size={48} />
+            <h2>Error Loading Dashboard</h2>
+            <p>{error}</p>
+            <button onClick={loadData} className="btn btn-primary">
+              Try Again
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="admin-dashboard">
@@ -195,7 +261,7 @@ const AdminDashboard = () => {
                     <DollarSign className="icon" />
                   </div>
                   <div className="stat-content">
-                    <h3>${totalRevenue.toLocaleString()}</h3>
+                    <h3>${stats.totalRevenue.toLocaleString()}</h3>
                     <p>Total Revenue</p>
                   </div>
                 </div>
@@ -205,7 +271,7 @@ const AdminDashboard = () => {
                     <Package className="icon" />
                   </div>
                   <div className="stat-content">
-                    <h3>{totalOrders}</h3>
+                    <h3>{stats.totalOrders}</h3>
                     <p>Total Orders</p>
                   </div>
                 </div>
@@ -215,7 +281,7 @@ const AdminDashboard = () => {
                     <Package className="icon" />
                   </div>
                   <div className="stat-content">
-                    <h3>{products.length}</h3>
+                    <h3>{stats.totalProducts}</h3>
                     <p>Products</p>
                   </div>
                 </div>
@@ -225,7 +291,7 @@ const AdminDashboard = () => {
                     <Users className="icon" />
                   </div>
                   <div className="stat-content">
-                    <h3>{pendingApplications.length}</h3>
+                    <h3>{stats.pendingApplications}</h3>
                     <p>Pending Applications</p>
                   </div>
                 </div>
@@ -289,18 +355,18 @@ const AdminDashboard = () => {
                 {filteredProducts.map(product => (
                   <div key={product.id} className="table-row">
                     <div className="product-info">
-                      <img src={product.image} alt={product.name} className="product-thumb" />
+                      <img src={product.image_url} alt={product.name} className="product-thumb" />
                       <div>
                         <span className="product-name">{product.name}</span>
                         <span className="product-desc">{product.description}</span>
                       </div>
                     </div>
-                    <span>{product.category}</span>
-                    <span>${product.b2cPrice}</span>
-                    <span>${product.b2bPrice}</span>
-                    <span>{product.minQuantityB2B}</span>
-                    <span className={`status ${product.inStock ? 'in-stock' : 'out-of-stock'}`}>
-                      {product.inStock ? 'In Stock' : 'Out of Stock'}
+                    <span>{product.categories?.name || 'Uncategorized'}</span>
+                    <span>${product.b2c_price}</span>
+                    <span>${product.b2b_price}</span>
+                    <span>{product.min_quantity_b2b}</span>
+                    <span className={`status ${product.in_stock ? 'in-stock' : 'out-of-stock'}`}>
+                      {product.in_stock ? 'In Stock' : 'Out of Stock'}
                     </span>
                     <div className="actions">
                       <button 
@@ -343,11 +409,11 @@ const AdminDashboard = () => {
 
               <div className="categories-grid">
                 {categories.map(category => (
-                  <div key={category} className="category-card">
-                    <span className="category-name">{category}</span>
+                  <div key={category.id} className="category-card">
+                    <span className="category-name">{category.name}</span>
                     <button 
                       className="delete-category"
-                      onClick={() => handleCategoryDelete(category)}
+                      onClick={() => handleCategoryDelete(category.id)}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -368,8 +434,8 @@ const AdminDashboard = () => {
                   <div key={application.id} className="application-card">
                     <div className="application-header">
                       <div className="company-info">
-                        <h4>{application.companyName}</h4>
-                        <p>{application.contactPerson}</p>
+                        <h4>{application.company_name}</h4>
+                        <p>{application.contact_person}</p>
                       </div>
                       <span className={`status status-${application.status}`}>
                         {application.status}
@@ -387,19 +453,19 @@ const AdminDashboard = () => {
                       </div>
                       <div className="detail-row">
                         <span>Business Type:</span>
-                        <span>{application.businessType}</span>
+                        <span>{application.business_type}</span>
                       </div>
                       <div className="detail-row">
                         <span>Years in Business:</span>
-                        <span>{application.yearsInBusiness}</span>
+                        <span>{application.years_in_business}</span>
                       </div>
                       <div className="detail-row">
                         <span>Expected Volume:</span>
-                        <span>${application.expectedVolume}</span>
+                        <span>${application.expected_monthly_volume}</span>
                       </div>
                       <div className="detail-row">
                         <span>Submitted:</span>
-                        <span>{new Date(application.submittedDate).toLocaleDateString()}</span>
+                        <span>{new Date(application.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                     
@@ -446,23 +512,40 @@ const AdminDashboard = () => {
 const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
   const [formData, setFormData] = useState({
     name: product.name || '',
-    category: product.category || categories[0] || '',
+    category_id: product.category_id || (categories[0]?.id || ''),
     description: product.description || '',
-    image: product.image || '',
-    b2cPrice: product.b2cPrice || '',
-    b2bPrice: product.b2bPrice || '',
-    minQuantityB2B: product.minQuantityB2B || 1,
-    inStock: product.inStock !== undefined ? product.inStock : true
+    image_url: product.image_url || '',
+    b2c_price: product.b2c_price || '',
+    b2b_price: product.b2b_price || '',
+    min_quantity_b2b: product.min_quantity_b2b || 1,
+    in_stock: product.in_stock !== undefined ? product.in_stock : true,
+    sku: product.sku || '',
+    material: product.material || ''
   })
+  
+  const [imageUploading, setImageUploading] = useState(false)
 
   const handleSubmit = (e) => {
     e.preventDefault()
+    if (imageUploading) {
+      alert('Please wait for image upload to complete')
+      return
+    }
+    
     onSave({
       ...formData,
-      b2cPrice: parseFloat(formData.b2cPrice),
-      b2bPrice: parseFloat(formData.b2bPrice),
-      minQuantityB2B: parseInt(formData.minQuantityB2B)
+      b2c_price: parseFloat(formData.b2c_price),
+      b2b_price: parseFloat(formData.b2b_price),
+      min_quantity_b2b: parseInt(formData.min_quantity_b2b)
     })
+  }
+  
+  const handleImageChange = (imageData) => {
+    if (imageData) {
+      setFormData(prev => ({ ...prev, image_url: imageData.url }))
+    } else {
+      setFormData(prev => ({ ...prev, image_url: '' }))
+    }
   }
 
   return (
@@ -486,17 +569,30 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
             />
           </div>
           
-          <div className="form-group">
-            <label>Category</label>
-            <select
-              value={formData.category}
-              onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-              required
-            >
-              {categories.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Category</label>
+              <select
+                value={formData.category_id}
+                onChange={(e) => setFormData(prev => ({ ...prev, category_id: e.target.value }))}
+                required
+              >
+                <option value="">Select Category</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="form-group">
+              <label>SKU</label>
+              <input
+                type="text"
+                value={formData.sku}
+                onChange={(e) => setFormData(prev => ({ ...prev, sku: e.target.value }))}
+                placeholder="Product SKU"
+              />
+            </div>
           </div>
           
           <div className="form-group">
@@ -510,12 +606,22 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
           </div>
           
           <div className="form-group">
-            <label>Image URL</label>
+            <label>Material</label>
             <input
-              type="url"
-              value={formData.image}
-              onChange={(e) => setFormData(prev => ({ ...prev, image: e.target.value }))}
-              required
+              type="text"
+              value={formData.material}
+              onChange={(e) => setFormData(prev => ({ ...prev, material: e.target.value }))}
+              placeholder="e.g., 18k Gold, Sterling Silver"
+            />
+          </div>
+          
+          <div className="form-group">
+            <label>Product Image</label>
+            <ImageUpload
+              bucket={STORAGE_BUCKETS.PRODUCT_IMAGES}
+              currentImage={formData.image_url}
+              onImageChange={handleImageChange}
+              placeholder="Upload product image"
             />
           </div>
           
@@ -525,8 +631,9 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
               <input
                 type="number"
                 step="0.01"
-                value={formData.b2cPrice}
-                onChange={(e) => setFormData(prev => ({ ...prev, b2cPrice: e.target.value }))}
+                min="0"
+                value={formData.b2c_price}
+                onChange={(e) => setFormData(prev => ({ ...prev, b2c_price: e.target.value }))}
                 required
               />
             </div>
@@ -536,8 +643,9 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
               <input
                 type="number"
                 step="0.01"
-                value={formData.b2bPrice}
-                onChange={(e) => setFormData(prev => ({ ...prev, b2bPrice: e.target.value }))}
+                min="0"
+                value={formData.b2b_price}
+                onChange={(e) => setFormData(prev => ({ ...prev, b2b_price: e.target.value }))}
                 required
               />
             </div>
@@ -549,8 +657,8 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
               <input
                 type="number"
                 min="1"
-                value={formData.minQuantityB2B}
-                onChange={(e) => setFormData(prev => ({ ...prev, minQuantityB2B: e.target.value }))}
+                value={formData.min_quantity_b2b}
+                onChange={(e) => setFormData(prev => ({ ...prev, min_quantity_b2b: e.target.value }))}
                 required
               />
             </div>
@@ -559,8 +667,8 @@ const ProductEditModal = ({ product, categories, onSave, onCancel }) => {
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={formData.inStock}
-                  onChange={(e) => setFormData(prev => ({ ...prev, inStock: e.target.checked }))}
+                  checked={formData.in_stock}
+                  onChange={(e) => setFormData(prev => ({ ...prev, in_stock: e.target.checked }))}
                 />
                 In Stock
               </label>

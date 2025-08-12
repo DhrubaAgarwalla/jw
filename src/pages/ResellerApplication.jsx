@@ -1,11 +1,15 @@
 import React, { useState } from 'react'
-import { Building, Mail, Phone, FileText, CheckCircle } from 'lucide-react'
+import { Building, Mail, Phone, FileText, CheckCircle, Lock, Eye, EyeOff } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { dbHelpers } from '../lib/supabase'
 
 const ResellerApplication = () => {
   const [formData, setFormData] = useState({
     companyName: '',
     contactPerson: '',
     email: '',
+    password: '',
+    confirmPassword: '',
     phone: '',
     businessAddress: '',
     city: '',
@@ -17,11 +21,15 @@ const ResellerApplication = () => {
     website: '',
     expectedMonthlyVolume: '',
     businessDescription: '',
-    references: ''
+    tradeReferences: ''
   })
   
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const { signUp } = useAuth()
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -34,15 +42,67 @@ const ResellerApplication = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setError('')
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitted(true)
+    // Validate passwords match
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match')
       setIsSubmitting(false)
+      return
+    }
+    
+    // Validate password strength
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long')
+      setIsSubmitting(false)
+      return
+    }
+    
+    try {
+      // Create user account with Supabase Auth
+      const signUpResult = await signUp(formData.email, formData.password, {
+        fullName: formData.contactPerson,
+        companyName: formData.companyName
+      })
       
-      // In a real application, you would send this data to your backend
-      console.log('Reseller application submitted:', formData)
-    }, 2000)
+      if (!signUpResult.success) {
+        throw new Error(signUpResult.message)
+      }
+      
+      // Prepare application data
+      const applicationData = {
+        user_id: signUpResult.data.user.id,
+        company_name: formData.companyName,
+        contact_person: formData.contactPerson,
+        email: formData.email,
+        phone: formData.phone,
+        business_address: {
+          street: formData.businessAddress,
+          city: formData.city,
+          state: formData.state,
+          zip: formData.zipCode
+        },
+        business_type: formData.businessType,
+        years_in_business: formData.yearsInBusiness,
+        tax_id: formData.taxId,
+        website: formData.website,
+        expected_monthly_volume: formData.expectedMonthlyVolume,
+        business_description: formData.businessDescription,
+        trade_references: formData.tradeReferences
+      }
+      
+      // Submit reseller application
+      await dbHelpers.createResellerApplication(applicationData)
+      
+      setIsSubmitted(true)
+      console.log('Reseller application submitted successfully')
+      
+    } catch (err) {
+      console.error('Error submitting application:', err)
+      setError(err.message || 'Failed to submit application. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (isSubmitted) {
@@ -51,19 +111,32 @@ const ResellerApplication = () => {
         <div className="container">
           <div className="success-message">
             <CheckCircle className="success-icon" />
-            <h2>Application Submitted Successfully!</h2>
+            <h2>Account Created & Application Submitted!</h2>
             <p>
-              Thank you for your interest in becoming a reseller partner. 
-              We have received your application and will review it within 2-3 business days.
+              Your B2B account has been created successfully and your wholesale application 
+              has been submitted for review. We will process your application within 2-3 business days.
+            </p>
+            <p>
+              <strong>Your login credentials:</strong><br/>
+              Email: {formData.email}<br/>
+              Password: (as set by you)
+            </p>
+            <p>
+              You can attempt to log in, but B2B features will only be available after admin approval.
             </p>
             <div className="next-steps">
               <h3>What happens next?</h3>
               <ol>
                 <li>Our team will review your application</li>
                 <li>We may contact you for additional information</li>
-                <li>Upon approval, you'll receive login credentials via email</li>
-                <li>You'll gain access to wholesale pricing and B2B features</li>
+                <li>Upon approval, your account will be activated for wholesale pricing</li>
+                <li>You'll receive an email confirmation when approved</li>
+                <li>Start ordering with wholesale prices immediately after approval</li>
               </ol>
+            </div>
+            <div className="action-buttons">
+              <a href="/b2b-login" className="btn btn-primary">Go to B2B Login</a>
+              <a href="/" className="btn btn-secondary">Return to Home</a>
             </div>
             <p className="contact-info">
               If you have any questions, please contact us at: <strong>business@jewelrystore.com</strong>
@@ -164,6 +237,52 @@ const ResellerApplication = () => {
                   onChange={handleInputChange}
                   required
                 />
+              </div>
+            </div>
+            
+            <div className="form-row">
+              <div className="form-group">
+                <label htmlFor="password">Password *</label>
+                <div className="password-input">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required
+                    minLength="6"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="form-group">
+                <label htmlFor="confirmPassword">Confirm Password *</label>
+                <div className="password-input">
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    required
+                    minLength="6"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -326,11 +445,11 @@ const ResellerApplication = () => {
             </div>
             
             <div className="form-group">
-              <label htmlFor="references">Trade References (Optional)</label>
+              <label htmlFor="tradeReferences">Trade References (Optional)</label>
               <textarea
-                id="references"
-                name="references"
-                value={formData.references}
+                id="tradeReferences"
+                name="tradeReferences"
+                value={formData.tradeReferences}
                 onChange={handleInputChange}
                 rows="3"
                 placeholder="Please provide contact information for trade references or suppliers you currently work with..."
@@ -338,13 +457,19 @@ const ResellerApplication = () => {
             </div>
           </div>
 
+          {error && (
+            <div className="error-message">
+              <p>{error}</p>
+            </div>
+          )}
+          
           <div className="form-actions">
             <button 
               type="submit" 
               className="btn btn-primary btn-large"
               disabled={isSubmitting}
             >
-              {isSubmitting ? 'Submitting Application...' : 'Submit Application'}
+              {isSubmitting ? 'Creating Account & Submitting Application...' : 'Create Account & Submit Application'}
             </button>
           </div>
         </form>

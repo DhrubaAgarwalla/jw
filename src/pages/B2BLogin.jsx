@@ -37,14 +37,16 @@ const B2BLogin = () => {
     setError('')
 
     try {
-      const result = login(credentials.username, credentials.password, 'b2b')
+      // Use email instead of username for Supabase auth
+      const result = await login(credentials.username, credentials.password, 'b2b')
       
       if (result.success) {
         navigate('/b2b-dashboard')
       } else {
-        setError(result.message)
+        setError(result.message || 'Invalid email or password')
       }
     } catch (err) {
+      console.error('Login error:', err)
       setError('An error occurred during login. Please try again.')
     } finally {
       setIsLoading(false)
@@ -111,15 +113,15 @@ const B2BLogin = () => {
               <div className="form-group">
                 <label htmlFor="username">
                   <User className="label-icon" />
-                  Username
+                  Email Address
                 </label>
                 <input
-                  type="text"
+                  type="email"
                   id="username"
                   name="username"
                   value={credentials.username}
                   onChange={handleInputChange}
-                  placeholder="Enter your username"
+                  placeholder="Enter your email address"
                   required
                   autoComplete="username"
                 />
