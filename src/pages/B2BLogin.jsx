@@ -1,23 +1,23 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Building, Lock, User, Eye, EyeOff } from 'lucide-react'
+import { Building, Lock, Mail, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 const B2BLogin = () => {
   const [credentials, setCredentials] = useState({
-    username: '',
+    email: '',
     password: ''
   })
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   
-  const { login, user } = useAuth()
+  const { loginB2B, user } = useAuth()
   const navigate = useNavigate()
 
   // Redirect if already logged in as B2B
   React.useEffect(() => {
-    if (user && user.role === 'b2b') {
+    if (user && user.user_metadata?.role === 'b2b') {
       navigate('/b2b-dashboard')
     }
   }, [user, navigate])
@@ -37,7 +37,7 @@ const B2BLogin = () => {
     setError('')
 
     try {
-      const result = login(credentials.username, credentials.password, 'b2b')
+      const result = await loginB2B(credentials.email, credentials.password)
       
       if (result.success) {
         navigate('/b2b-dashboard')
@@ -80,17 +80,16 @@ const B2BLogin = () => {
               </div>
               
               <div className="demo-credentials">
-                <h4>Demo Credentials:</h4>
-                <div className="demo-account">
-                  <strong>Username:</strong> reseller1<br />
-                  <strong>Password:</strong> pass123<br />
-                  <small>Company: ABC Jewelry Store</small>
-                </div>
-                <div className="demo-account">
-                  <strong>Username:</strong> reseller2<br />
-                  <strong>Password:</strong> pass456<br />
-                  <small>Company: XYZ Gems</small>
-                </div>
+                <h4>B2B Account Setup:</h4>
+                <p>
+                  To get B2B access, you need to:
+                </p>
+                <ol>
+                  <li>Submit a reseller application</li>
+                  <li>Wait for admin approval</li>
+                  <li>Receive login credentials via email</li>
+                  <li>Access wholesale pricing and features</li>
+                </ol>
               </div>
             </div>
           </div>
@@ -109,19 +108,19 @@ const B2BLogin = () => {
               )}
 
               <div className="form-group">
-                <label htmlFor="username">
-                  <User className="label-icon" />
-                  Username
+                <label htmlFor="email">
+                  <Mail className="label-icon" />
+                  Email Address
                 </label>
                 <input
-                  type="text"
-                  id="username"
-                  name="username"
-                  value={credentials.username}
+                  type="email"
+                  id="email"
+                  name="email"
+                  value={credentials.email}
                   onChange={handleInputChange}
-                  placeholder="Enter your username"
+                  placeholder="Enter your email"
                   required
-                  autoComplete="username"
+                  autoComplete="email"
                 />
               </div>
 
